@@ -50,7 +50,6 @@ async def _fetch_notification_channels(user_id: str) -> list[dict]:
             client.table("user_channels")
             .select("channel, notify_id, metadata")
             .eq("user_id", user_id)
-            .or_("verified.eq.true,is_primary.eq.true")
             .eq("receive_reminders", True)
             .order("is_primary", desc=True)
             .order("created_at")
