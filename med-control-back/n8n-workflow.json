@@ -135,6 +135,12 @@
               "name": "n8n_webhook_url",
               "value": "={{ $json.webhookUrl || '' }}",
               "type": "string"
+            },
+            {
+              "id": "a20",
+              "name": "channels",
+              "value": "={{ typeof $json.body.channels === 'string' ? $json.body.channels : JSON.stringify($json.body.channels || []) }}",
+              "type": "string"
             }
           ]
         },
@@ -185,7 +191,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ── Generate .ics calendar file ──────────────────────────────\nconst data = $input.first().json;\nconst dataFromParseData = $(\"Parse Data\").first().json;\n// Calculate event start\nconst startDate = new Date(\n  new Date(data.created_at).getTime() + dataFromParseData.delay_minutes * 60 * 1000,\n);\nconst endDate = new Date(startDate.getTime() + 15 * 60 * 1000);\n\nconst formatDate = (d) =>\n  d.toISOString().replace(/[-:]/g, \"\").split(\".\")[0] + \"Z\";\n\nconst uid = `medai-${data.reminder_id}@medai.local`;\n\nconst icsLines = [\n  \"BEGIN:VCALENDAR\",\n  \"VERSION:2.0\",\n  \"PRODID:-//MedAI//Medication Reminder//ES\",\n  \"CALSCALE:GREGORIAN\",\n  \"METHOD:PUBLISH\",\n  \"BEGIN:VEVENT\",\n  `UID:${uid}`,\n  `DTSTAMP:${formatDate(new Date())}`,\n  `DTSTART:${formatDate(startDate)}`,\n  `DTEND:${formatDate(endDate)}`,\n  `SUMMARY:💊 ${data.medication}`,\n  `DESCRIPTION:${data.message}\\\\n\\\\nNotas: ${data.notes}`,\n  \"BEGIN:VALARM\",\n  \"TRIGGER:-PT0M\",\n  \"ACTION:DISPLAY\",\n  `DESCRIPTION:${data.message}`,\n  \"END:VALARM\",\n  \"END:VEVENT\",\n  \"END:VCALENDAR\",\n];\n\nconst icsContent = icsLines.join(\"\\r\\n\");\nconst buffer = Buffer.from(icsContent, \"utf8\");\nconst binaryData = await this.helpers.prepareBinaryData(\n  buffer,\n  `${data.medication.replace(/\\s+/g, \"_\")}.ics`,\n  \"text/calendar\",\n);\n\nreturn { json: data, binary: { ics: binaryData } };\n"
+        "jsCode": "// ── Generate .ics calendar file ──────────────────────────────\nconst data = $input.first().json;\nconst dataFromParseData = $(\"Parse Data\").first().json;\n// Calculate event start\nconst startDate = new Date(\n  new Date(data.created_at).getTime() + dataFromParseData.delay_minutes * 60 * 1000,\n);\nconst endDate = new Date(startDate.getTime() + 15 * 60 * 1000);\n\nconst formatDate = (d) =>\n  d.toISOString().replace(/[-:]/g, \"\").split(\".\")[0] + \"Z\";\n\nconst uid = `medai-${data.reminder_id}@medai.local`;\n\nconst icsLines = [\n  \"BEGIN:VCALENDAR\",\n  \"VERSION:2.0\",\n  \"PRODID:-//MedAI//Medication Reminder//ES\",\n  \"CALSCALE:GREGORIAN\",\n  \"METHOD:PUBLISH\",\n  \"BEGIN:VEVENT\",\n  `UID:${uid}`,\n  `DTSTAMP:${formatDate(new Date())}`,\n  `DTSTART:${formatDate(startDate)}`,\n  `DTEND:${formatDate(endDate)}`,\n  `SUMMARY:💊 ${data.medication}`,\n  `DESCRIPTION:${data.message}\\\\n\\\\nNotas: ${data.notes}`,\n  \"BEGIN:VALARM\",\n  \"TRIGGER:-PT0M\",\n  \"ACTION:DISPLAY\",\n  `DESCRIPTION:${data.message}`,\n  \"END:VALARM\",\n  \"END:VEVENT\",\n  \"END:VCALENDAR\",\n];\n\nconst icsContent = icsLines.join(\"\\r\\n\");\nconst buffer = Buffer.from(icsContent, \"utf8\");\nconst binaryData = await this.helpers.prepareBinaryData(\n  buffer,\n  `${data.medication.replace(/\\s+/g, \"_\")}.ics`,\n  \"text/calendar\",\n);\n\nreturn { json: { ...data, channels: dataFromParseData.channels || '[]' }, binary: { ics: binaryData } };\n"
       },
       "id": "9a869ff0-a7a9-48e7-bf4c-86c7fa8d17d6",
       "name": "Generate .ics File",
@@ -226,7 +232,7 @@
                 "conditions": [
                   {
                     "id": "telegram-condition",
-                    "leftValue": "={{ $('Generate .ics File').item.json.channel }}",
+                    "leftValue": "={{ $json.channel }}",
                     "rightValue": "telegram",
                     "operator": {
                       "type": "string",
@@ -250,7 +256,7 @@
                 "conditions": [
                   {
                     "id": "email-condition",
-                    "leftValue": "={{ $('Generate .ics File').item.json.channel }}",
+                    "leftValue": "={{ $json.channel }}",
                     "rightValue": "email",
                     "operator": {
                       "type": "string",
@@ -274,7 +280,7 @@
                 "conditions": [
                   {
                     "id": "discord-condition",
-                    "leftValue": "={{ $('Generate .ics File').item.json.channel }}",
+                    "leftValue": "={{ $json.channel }}",
                     "rightValue": "discord",
                     "operator": {
                       "type": "string",
@@ -298,7 +304,7 @@
                 "conditions": [
                   {
                     "id": "webpush-condition",
-                    "leftValue": "={{ $('Generate .ics File').item.json.channel }}",
+                    "leftValue": "={{ $json.channel }}",
                     "rightValue": "webpush",
                     "operator": {
                       "type": "string",
@@ -322,7 +328,7 @@
                 "conditions": [
                   {
                     "id": "fa2d8534-f3f6-499a-a0a7-c31285433f8b",
-                    "leftValue": "={{ $('Generate .ics File').item.json.channel }}",
+                    "leftValue": "={{ $json.channel }}",
                     "rightValue": "whatsapp",
                     "operator": {
                       "type": "string",
@@ -351,8 +357,8 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Wait Until Scheduled Time').item.json.notify_id }}",
-        "text": "=🔔 *Recordatorio de Medicación*\n\n💊 *{{ $('Wait Until Scheduled Time').item.json.medication }}*\n🕐 Hora: {{ $('Wait Until Scheduled Time').item.json.schedule }}\n\n{{ $('Wait Until Scheduled Time').item.json.message }}\n\n{{  $('Wait Until Scheduled Time').item.json.notes ? '_' +  $('Wait Until Scheduled Time').item.json.notes + '_' : '' }}",
+        "chatId": "={{ $json.notify_id }}",
+        "text": "=🔔 *Recordatorio de Medicación*\n\n💊 *{{ $json.medication }}*\n🕐 Hora: {{ $json.schedule }}\n\n{{ $json.message }}\n\n{{ $json.notes ? '_' + $json.notes + '_' : '' }}",
         "additionalFields": {
           "appendAttribution": false,
           "disable_notification": false,
@@ -466,7 +472,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  app_id: $('Webhook Entry').first().json.onesignal_app_id || 'YOUR_ONESIGNAL_APP_ID',\n  include_external_user_ids: [$json.user_id],\n  headings: { en: '💊 Recordatorio de Medicación' },\n  contents: { en: $json.medication + ' - ' + $json.message },\n  data: {\n    type: 'medication_reminder',\n    reminder_id: $json.reminder_id,\n    medication: $json.medication\n  },\n  web_url: 'https://tudominio.com/reminders/' + $json.reminder_id\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  app_id: $json.onesignal_app_id || 'YOUR_ONESIGNAL_APP_ID',\n  include_external_user_ids: [$json.user_id],\n  headings: { en: '💊 Recordatorio de Medicación' },\n  contents: { en: $json.medication + ' - ' + $json.message },\n  data: {\n    type: 'medication_reminder',\n    reminder_id: $json.reminder_id,\n    medication: $json.medication\n  },\n  web_url: 'https://tudominio.com/reminders/' + $json.reminder_id\n}) }}",
         "options": {}
       },
       "id": "321ffc2c-6837-4fdc-b797-9274aca7afbf",
@@ -494,7 +500,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  event: 'reminder.fired',\n  data: {\n    reminder_id: $('Wait Until Scheduled Time').item.json.reminder_id,\n    user_id: $('Wait Until Scheduled Time').item.json.user_id,\n    session_id: $('Wait Until Scheduled Time').item.json.session_id,\n    medication: $('Wait Until Scheduled Time').item.json.medication,\n    schedule: $('Wait Until Scheduled Time').item.json.schedule,\n    channel: $('Wait Until Scheduled Time').item.json.channel,\n    fired_at: $now.toISO()\n  }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  event: 'reminder.fired',\n  data: {\n    reminder_id: $('Wait Until Scheduled Time').item.json.reminder_id,\n    user_id: $('Wait Until Scheduled Time').item.json.user_id,\n    session_id: $('Wait Until Scheduled Time').item.json.session_id,\n    medication: $('Wait Until Scheduled Time').item.json.medication,\n    schedule: $('Wait Until Scheduled Time').item.json.schedule,\n    channel: 'all',\n    fired_at: $now.toISO()\n  }\n}) }}",
         "options": {
           "timeout": 5000
         }
@@ -604,6 +610,15 @@
                 "type": "boolean",
                 "operation": "equals"
               }
+            },
+            {
+              "id": "cond-primary-channel",
+              "leftValue": "={{ $json.channel }}",
+              "rightValue": "webpush",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -621,7 +636,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $('Wait Until Scheduled Time').first().json;\nconst scheduledAt = new Date(new Date(data.created_at).getTime() + data.delay_minutes * 60000);\nconst endDate = new Date(data.recurrence_end_date);\nconst now = new Date();\nlet nextDate = new Date(scheduledAt);\n\nswitch (data.recurrence_type) {\n  case 'daily':\n    nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'weekly': {\n    const days = JSON.parse(data.recurrence_days || '[]');\n    nextDate.setDate(nextDate.getDate() + 1);\n    let safety = 0;\n    while (!days.includes(nextDate.getDay()) && safety++ < 8) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  }\n  case 'weekdays':\n    nextDate.setDate(nextDate.getDate() + 1);\n    while ([0,6].includes(nextDate.getDay())) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'weekends':\n    nextDate.setDate(nextDate.getDate() + 1);\n    while (![0,6].includes(nextDate.getDay())) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'monthly':\n    nextDate.setMonth(nextDate.getMonth() + 1);\n    break;\n  case 'interval_days':\n    nextDate.setDate(nextDate.getDate() + (data.recurrence_interval || 1));\n    break;\n  case 'interval_hours':\n    nextDate = new Date(scheduledAt.getTime() + (data.recurrence_interval || 1) * 3600000);\n    break;\n  default:\n    return [{ json: { should_requeue: false } }];\n}\n\nif (nextDate > endDate) return [{ json: { should_requeue: false } }];\n\nconst delayMinutes = Math.max(1, Math.floor((nextDate.getTime() - now.getTime()) / 60000));\nconst newReminderId = 'rem_' + Math.floor(nextDate.getTime() / 1000);\n\nreturn [{ json: { ...data, reminder_id: newReminderId, delay_minutes: delayMinutes, created_at: now.toISOString(), should_requeue: true } }];"
+        "jsCode": "const data = $('Wait Until Scheduled Time').first().json;\nconst scheduledAt = new Date(new Date(data.created_at).getTime() + data.delay_minutes * 60000);\nconst endDate = new Date(data.recurrence_end_date);\nconst now = new Date();\nlet nextDate = new Date(scheduledAt);\n\nswitch (data.recurrence_type) {\n  case 'daily':\n    nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'weekly': {\n    const days = JSON.parse(data.recurrence_days || '[]');\n    nextDate.setDate(nextDate.getDate() + 1);\n    let safety = 0;\n    while (!days.includes(nextDate.getDay()) && safety++ < 8) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  }\n  case 'weekdays':\n    nextDate.setDate(nextDate.getDate() + 1);\n    while ([0,6].includes(nextDate.getDay())) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'weekends':\n    nextDate.setDate(nextDate.getDate() + 1);\n    while (![0,6].includes(nextDate.getDay())) nextDate.setDate(nextDate.getDate() + 1);\n    break;\n  case 'monthly':\n    nextDate.setMonth(nextDate.getMonth() + 1);\n    break;\n  case 'interval_days':\n    nextDate.setDate(nextDate.getDate() + (data.recurrence_interval || 1));\n    break;\n  case 'interval_hours':\n    nextDate = new Date(scheduledAt.getTime() + (data.recurrence_interval || 1) * 3600000);\n    break;\n  default:\n    return [{ json: { should_requeue: false } }];\n}\n\nif (nextDate > endDate) return [{ json: { should_requeue: false } }];\n\nconst delayMinutes = Math.max(1, Math.floor((nextDate.getTime() - now.getTime()) / 60000));\nconst newReminderId = 'rem_' + Math.floor(nextDate.getTime() / 1000);\n\nreturn [{ json: { ...data, channels: data.channels || '[]', reminder_id: newReminderId, delay_minutes: delayMinutes, created_at: now.toISOString(), should_requeue: true } }];"
       },
       "id": "d1d32b10-6b2f-410a-854d-7b94ec30b20e",
       "name": "Calculate Next Occurrence",
@@ -1020,6 +1035,19 @@
       ],
       "id": "6cba133b-d940-4dc7-8cb3-7ac46b12f40e",
       "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $input.first().json;\n// 'channels' no es columna de DB — sobrevive en Generate .ics File pero se pierde en Update Status → Firing.\n// Leerlo desde el nodo que lo preservó explícitamente.\nconst raw = $('Generate .ics File').first().json.channels || base.channels;\nlet channels;\ntry {\n  channels = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);\n} catch(e) { channels = []; }\nif (!channels.length) {\n  channels = [{ channel: base.channel || 'webpush', notify_id: base.notify_id || base.user_id, onesignal_app_id: '', discord_webhook_url: '' }];\n}\nreturn channels.map(ch => ({\n  json: { ...base, channel: ch.channel, notify_id: ch.notify_id, onesignal_app_id: ch.onesignal_app_id || '', discord_webhook_url: ch.discord_webhook_url || '' },\n  binary: $('Generate .ics File').first().binary || {}\n}));"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Split Channels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        912
+      ]
     }
   ],
   "pinData": {
@@ -1047,8 +1075,12 @@
             "schedule": "16:58",
             "message": "¡Es hora de tomar un vaso de agua!",
             "notes": "",
-            "channel": "whatsapp",
-            "notify_id": "573107073803",
+            "channel": "webpush",
+            "notify_id": "c17d3951-07a7-4dc2-b37e-ecf710d1d041",
+            "channels": [
+              { "channel": "webpush", "notify_id": "c17d3951-07a7-4dc2-b37e-ecf710d1d041", "onesignal_app_id": "", "discord_webhook_url": "" },
+              { "channel": "whatsapp", "notify_id": "573107073803", "onesignal_app_id": "", "discord_webhook_url": "" }
+            ],
             "delay_minutes": 1,
             "created_at": "2026-05-10T17:02:50.781992",
             "is_recurring": false,
@@ -1343,6 +1375,17 @@
       ]
     },
     "Update Status → Firing": {
+      "main": [
+        [
+          {
+            "node": "Split Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Channels": {
       "main": [
         [
           {

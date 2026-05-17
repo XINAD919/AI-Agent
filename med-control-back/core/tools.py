@@ -150,11 +150,30 @@ def create_reminder(
         ch for ch in db_channels if ch["channel"] != "webpush"
     ]
 
-    # Fan-out por (schedule_time, canal) — construye payloads y dispara en paralelo
+    # Un payload por horario con todos los canales como array — n8n los procesa en cola
     schedule_times = [t.strip() for t in schedule.split(",")]
     errors: list[str] = []
-    sent_channels: list[str] = []
+    sent_times: list[str] = []
     tasks: list[dict] = []
+
+    channels_array = [
+        {
+            "channel": ch["channel"],
+            "notify_id": ch["notify_id"],
+            "discord_webhook_url": (
+                ch.get("metadata", {}).get("webhook_url", "")
+                if ch["channel"] == "discord"
+                else ""
+            ),
+            "onesignal_app_id": (
+                os.getenv("ONESIGNAL_APP_ID", "")
+                if ch["channel"] == "webpush"
+                else ""
+            ),
+        }
+        for ch in channels_to_notify
+    ]
+    primary = channels_to_notify[0]  # siempre webpush
 
     now = datetime.now()
     for time_str in schedule_times:
@@ -172,55 +191,47 @@ def create_reminder(
 
         reminder_id = f"rem_{user_id.replace('-', '')[:8]}_{int(target.timestamp())}"
 
-        for ch in channels_to_notify:
-            payload: dict = {
-                "user_id": user_id,
-                "session_id": session_id or "unknown",
-                "reminder_id": reminder_id,
-                "medication": medication,
-                "schedule": time_str,
-                "message": message,
-                "notes": notes,
-                "channel": ch["channel"],
-                "notify_id": ch["notify_id"],
-                "delay_minutes": delay_minutes,
-                "created_at": now.isoformat(),
-                "is_recurring": recurrence_type is not None,
-                "recurrence_type": recurrence_type or "",
-                "recurrence_days": recurrence_days or [],
-                "recurrence_interval": recurrence_interval or 1,
-                "recurrence_end_date": recurrence_end_date or "",
-                "n8n_webhook_url": webhook_url,
-            }
-
-            metadata = ch.get("metadata", {})
-            if ch["channel"] == "discord" and "webhook_url" in metadata:
-                payload["discord_webhook_url"] = metadata["webhook_url"]
-            elif ch["channel"] == "webpush":
-                onesignal_app_id = os.getenv("ONESIGNAL_APP_ID")
-                if onesignal_app_id:
-                    payload["onesignal_app_id"] = onesignal_app_id
-
-            tasks.append(payload)
+        tasks.append({
+            "user_id": user_id,
+            "session_id": session_id or "unknown",
+            "reminder_id": reminder_id,
+            "medication": medication,
+            "schedule": time_str,
+            "message": message,
+            "notes": notes,
+            # canal primario para backward-compat con nodo "Create a row"
+            "channel": primary["channel"],
+            "notify_id": primary["notify_id"],
+            # array completo para el split en n8n
+            "channels": channels_array,
+            "delay_minutes": delay_minutes,
+            "created_at": now.isoformat(),
+            "is_recurring": recurrence_type is not None,
+            "recurrence_type": recurrence_type or "",
+            "recurrence_days": recurrence_days or [],
+            "recurrence_interval": recurrence_interval or 1,
+            "recurrence_end_date": recurrence_end_date or "",
+            "n8n_webhook_url": webhook_url,
+        })
 
     def _post(p: dict) -> tuple[str, str | None]:
         try:
             httpx.post(webhook_url, json=p, timeout=10).raise_for_status()
-            return p["channel"], None
+            return p["schedule"], None
         except httpx.HTTPStatusError as e:
-            return p["channel"], f"{p['channel']}@{p['schedule']}: HTTP {e.response.status_code}"
+            return p["schedule"], f"{p['schedule']}: HTTP {e.response.status_code}"
         except httpx.RequestError as e:
-            return p["channel"], f"{p['channel']}@{p['schedule']}: sin conexión ({e})"
+            return p["schedule"], f"{p['schedule']}: sin conexión ({e})"
 
     if tasks:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks), 8)) as ex:
-            for channel, err in ex.map(_post, tasks):
+            for time_str, err in ex.map(_post, tasks):
                 if err is None:
-                    sent_channels.append(channel)
+                    sent_times.append(time_str)
                 else:
                     errors.append(err)
 
-    if not sent_channels:
+    if not sent_times:
         return (
             "Error al crear recordatorio: no se pudo contactar con n8n. "
             f"Detalles: {'; '.join(errors)}"
@@ -239,7 +250,9 @@ def create_reminder(
         fecha_programada = first_time
         delay_first = 0
 
-    canal_labels = ", ".join(sorted(set(ch.title() for ch in sent_channels)))
+    canal_labels = ", ".join(sorted({
+        ch["channel"].title() for p in tasks for ch in p["channels"]
+    }))
     recurrence_info = (
         f"\nRecurrencia: {recurrence_type} hasta {recurrence_end_date}"
         if recurrence_type
