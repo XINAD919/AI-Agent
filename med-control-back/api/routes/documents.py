@@ -92,7 +92,13 @@ async def upload_document(
 
     # 1. Upload to Supabase Storage
     try:
-        storage_path = upload_prescription(user_id, filename, file_bytes, content_type)
+        storage_path = await upload_prescription(
+            user_id,
+            filename,
+            file_bytes,
+            content_type,
+        )
+        print(f"storage_path: {storage_path}")
     except Exception as e:
         logger.error("Storage upload failed: %s", e)
         raise HTTPException(status_code=502, detail="Failed to upload file to storage.")
