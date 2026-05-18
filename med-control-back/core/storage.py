@@ -24,7 +24,10 @@ async def upload_prescription(
     await client.storage.from_(BUCKET).upload(
         path=path,
         file=file_bytes,
-        file_options={"content-type": content_type, "upsert": "true"},
+        file_options={
+            "content-type": content_type,
+            "upsert": "true",
+        },
     )
     return path
 

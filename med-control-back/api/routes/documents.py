@@ -9,7 +9,15 @@ import asyncio
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import BaseModel
 
 from core.db import create_document, get_user_documents, update_document_processing
@@ -51,28 +59,36 @@ async def _process_document_background(
 ) -> None:
     """Run OCR + embedding generation after the HTTP response is returned."""
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         ocr_result = await loop.run_in_executor(
             None, process_prescription, file_bytes, mimetype
         )
-        chunk_count = await generate_and_save_embeddings(doc_id, user_id, ocr_result.raw_text)
+        chunk_count = await generate_and_save_embeddings(
+            doc_id, user_id, ocr_result.raw_text
+        )
         await update_document_processing(doc_id, ocr_result.raw_text, chunk_count)
         logger.info("Document %s processed: %d chunks", doc_id, chunk_count)
     except Exception as e:
         logger.error("OCR background task failed for doc %s: %s", doc_id, e)
 
 
-@router.post("/users/{user_id}/documents", response_model=DocumentResponse, status_code=201)
+@router.post(
+    "/users/{user_id}/documents", response_model=DocumentResponse, status_code=201
+)
 async def upload_document(
     user_id: str,
     background_tasks: BackgroundTasks,
-    file: Annotated[UploadFile, File(description="Prescription image (JPEG/PNG/WEBP) or PDF")],
+    file: Annotated[
+        UploadFile, File(description="Prescription image (JPEG/PNG/WEBP) or PDF")
+    ],
     description: Annotated[str | None, Form()] = None,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     if user_id != current_user.user_id:
         raise HTTPException(status_code=403, detail="No autorizado")
+
     content_type = file.content_type or "application/octet-stream"
+
     if content_type not in _ALLOWED_TYPES:
         raise HTTPException(
             status_code=415,
